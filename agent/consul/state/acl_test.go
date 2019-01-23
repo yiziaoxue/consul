@@ -14,6 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testRoleID_A   = "2c74a9b8-271c-4a21-b727-200db397c01c"
+	testRoleID_B   = "aeab6b63-08d1-455a-b85b-3458b462b426"
+	fakePolicyID_A = "d3cf55e1-0fed-4b79-96ab-b42cf9ad5d9c"
+	fakePolicyID_B = "8319cb6b-6d80-4498-8094-4ef37d5f3f2b"
+	fakePolicyID_C = "f0f6ac8b-3636-46b4-a2cf-d6d473fb44d6"
+	fakePolicyID_D = "c160853c-9188-4872-ad82-6b54b5594da3"
+	fakePolicyID_E = "2b09c9aa-b9e1-4dbb-a940-4ee278bbcb05"
+)
+
 func setupGlobalManagement(t *testing.T, s *Store) {
 	policy := structs.ACLPolicy{
 		ID:          structs.ACLPolicyGlobalManagementID,
@@ -68,7 +78,46 @@ func setupExtraPolicies(t *testing.T, s *Store) {
 	require.NoError(t, s.ACLPolicyBatchSet(2, policies))
 }
 
+func setupExtraPoliciesAndRoles(t *testing.T, s *Store) {
+	setupExtraPolicies(t, s)
+
+	roles := structs.ACLRoles{
+		&structs.ACLRole{
+			ID:          "f3055d4f-146c-433a-831a-dc53ed5b57fa",
+			Name:        "node-read-role",
+			Description: "Allows reading all node information",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: "a0625e95-9b3e-42de-a8d6-ceef5b6f3286",
+				},
+			},
+		},
+		&structs.ACLRole{
+			ID:          "02237ea1-c1fb-4c56-b5ab-1a0092a1e715",
+			Name:        "agent-read-role",
+			Description: "Allows reading all agent information",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: "9386ecae-6677-4686-bcd4-5ab9d86cca1d",
+				},
+			},
+		},
+	}
+
+	for _, role := range roles {
+		role.SetHash(true)
+	}
+
+	require.NoError(t, s.ACLRoleBatchSet(3, roles))
+}
+
 func testACLTokensStateStore(t *testing.T) *Store {
+	s := testACLStateStore(t)
+	setupExtraPoliciesAndRoles(t, s)
+	return s
+}
+
+func testACLRolesStateStore(t *testing.T) *Store {
 	s := testACLStateStore(t)
 	setupExtraPolicies(t, s)
 	return s
@@ -326,6 +375,23 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Missing Role ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLTokensStateStore(t)
+		token := &structs.ACLToken{
+			AccessorID: "daf37c07-d04d-4fd5-9678-a8206a57d61a",
+			SecretID:   "39171632-6f34-4411-827f-9416403687f4",
+			Roles: []structs.ACLTokenRoleLink{
+				structs.ACLTokenRoleLink{
+					Name: "no-id",
+				},
+			},
+		}
+
+		err := s.ACLTokenSet(2, token, false)
+		require.Error(t, err)
+	})
+
 	t.Run("Unresolvable Policy ID", func(t *testing.T) {
 		t.Parallel()
 		s := testACLTokensStateStore(t)
@@ -343,6 +409,23 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Unresolvable Role ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLTokensStateStore(t)
+		token := &structs.ACLToken{
+			AccessorID: "daf37c07-d04d-4fd5-9678-a8206a57d61a",
+			SecretID:   "39171632-6f34-4411-827f-9416403687f4",
+			Roles: []structs.ACLTokenRoleLink{
+				structs.ACLTokenRoleLink{
+					ID: "9b2349b6-55d3-4901-b287-347ae725af2f",
+				},
+			},
+		}
+
+		err := s.ACLTokenSet(2, token, false)
+		require.Error(t, err)
+	})
+
 	t.Run("New", func(t *testing.T) {
 		t.Parallel()
 		s := testACLTokensStateStore(t)
@@ -352,6 +435,11 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 			Policies: []structs.ACLTokenPolicyLink{
 				structs.ACLTokenPolicyLink{
 					ID: "a0625e95-9b3e-42de-a8d6-ceef5b6f3286",
+				},
+			},
+			Roles: []structs.ACLTokenRoleLink{
+				structs.ACLTokenRoleLink{
+					ID: "f3055d4f-146c-433a-831a-dc53ed5b57fa",
 				},
 			},
 			ServiceIdentities: []*structs.ACLServiceIdentity{
@@ -371,6 +459,8 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 		require.Equal(t, uint64(2), rtoken.ModifyIndex)
 		require.Len(t, rtoken.Policies, 1)
 		require.Equal(t, "node-read", rtoken.Policies[0].Name)
+		require.Len(t, rtoken.Roles, 1)
+		require.Equal(t, "node-read-role", rtoken.Roles[0].Name)
 		require.Len(t, rtoken.ServiceIdentities, 1)
 		require.Equal(t, "web", rtoken.ServiceIdentities[0].ServiceName)
 	})
@@ -403,6 +493,11 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 					ID: structs.ACLPolicyGlobalManagementID,
 				},
 			},
+			Roles: []structs.ACLTokenRoleLink{
+				structs.ACLTokenRoleLink{
+					ID: "f3055d4f-146c-433a-831a-dc53ed5b57fa",
+				},
+			},
 			ServiceIdentities: []*structs.ACLServiceIdentity{
 				&structs.ACLServiceIdentity{
 					ServiceName: "db",
@@ -421,6 +516,9 @@ func TestStateStore_ACLToken_SetGet(t *testing.T) {
 		require.Len(t, rtoken.Policies, 1)
 		require.Equal(t, structs.ACLPolicyGlobalManagementID, rtoken.Policies[0].ID)
 		require.Equal(t, "global-management", rtoken.Policies[0].Name)
+		require.Len(t, rtoken.Roles, 1)
+		require.Equal(t, "f3055d4f-146c-433a-831a-dc53ed5b57fa", rtoken.Roles[0].ID)
+		require.Equal(t, "node-read-role", rtoken.Roles[0].Name)
 		require.Len(t, rtoken.ServiceIdentities, 1)
 		require.Equal(t, "db", rtoken.ServiceIdentities[0].ServiceName)
 	})
@@ -1395,6 +1493,503 @@ func TestStateStore_ACLPolicy_Delete(t *testing.T) {
 	})
 }
 
+func TestStateStore_ACLRole_SetGet(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Missing ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			Name:        "test-role",
+			Description: "test",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: structs.ACLPolicyGlobalManagementID,
+				},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("Missing Name", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Description: "test",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: structs.ACLPolicyGlobalManagementID,
+				},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("Missing Service Identity Fields", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Description: "test",
+			ServiceIdentities: []*structs.ACLServiceIdentity{
+				&structs.ACLServiceIdentity{},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("Missing Service Identity Name", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Description: "test",
+			ServiceIdentities: []*structs.ACLServiceIdentity{
+				&structs.ACLServiceIdentity{
+					Datacenters: []string{"dc1"},
+				},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("Missing Policy ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Description: "test",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					Name: "no-id",
+				},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("Unresolvable Policy ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Description: "test",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: "4f20e379-b496-4b99-9599-19a197126490",
+				},
+			},
+		}
+
+		require.Error(t, s.ACLRoleSet(3, &role))
+	})
+
+	t.Run("New", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		role := structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "my-new-role",
+			Description: "test",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: "a0625e95-9b3e-42de-a8d6-ceef5b6f3286",
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleSet(3, &role))
+
+		verify := func(idx uint64, rrole *structs.ACLRole, err error) {
+			require.Equal(t, uint64(3), idx)
+			require.NoError(t, err)
+			require.NotNil(t, rrole)
+			require.Equal(t, "my-new-role", rrole.Name)
+			require.Equal(t, "test", rrole.Description)
+			require.Equal(t, uint64(3), rrole.CreateIndex)
+			require.Equal(t, uint64(3), rrole.ModifyIndex)
+			require.Len(t, rrole.ServiceIdentities, 0)
+			// require.ElementsMatch(t, role.Policies, rrole.Policies)
+			require.Len(t, rrole.Policies, 1)
+			require.Equal(t, "node-read", rrole.Policies[0].Name)
+		}
+
+		idx, rpolicy, err := s.ACLRoleGetByID(nil, testRoleID_A)
+		verify(idx, rpolicy, err)
+
+		idx, rpolicy, err = s.ACLRoleGetByName(nil, "my-new-role")
+		verify(idx, rpolicy, err)
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		t.Parallel()
+		s := testACLRolesStateStore(t)
+
+		// Create the initial role
+		role := &structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "node-read-role",
+			Description: "Allows reading all node information",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: "a0625e95-9b3e-42de-a8d6-ceef5b6f3286",
+				},
+			},
+		}
+		role.SetHash(true)
+
+		require.NoError(t, s.ACLRoleSet(2, role))
+
+		// Now make sure we can update it
+		update := &structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "node-read-role-modified",
+			Description: "Modified",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: structs.ACLPolicyGlobalManagementID,
+				},
+			},
+		}
+		update.SetHash(true)
+
+		require.NoError(t, s.ACLRoleSet(3, update))
+
+		verify := func(idx uint64, rrole *structs.ACLRole, err error) {
+			require.Equal(t, uint64(3), idx)
+			require.NoError(t, err)
+			require.NotNil(t, rrole)
+			require.Equal(t, "node-read-role-modified", rrole.Name)
+			require.Equal(t, "Modified", rrole.Description)
+			require.Equal(t, uint64(2), rrole.CreateIndex)
+			require.Equal(t, uint64(3), rrole.ModifyIndex)
+			require.Len(t, rrole.ServiceIdentities, 0)
+			require.Len(t, rrole.Policies, 1)
+			require.Equal(t, structs.ACLPolicyGlobalManagementID, rrole.Policies[0].ID)
+			require.Equal(t, "global-management", rrole.Policies[0].Name)
+		}
+
+		// role found via id
+		idx, rrole, err := s.ACLRoleGetByID(nil, testRoleID_A)
+		verify(idx, rrole, err)
+
+		// role no longer found via old name
+		idx, rrole, err = s.ACLRoleGetByName(nil, "node-read-role")
+		require.Equal(t, uint64(3), idx)
+		require.NoError(t, err)
+		require.Nil(t, rrole)
+
+		// role is found via new name
+		idx, rrole, err = s.ACLRoleGetByName(nil, "node-read-role-modified")
+		verify(idx, rrole, err)
+	})
+}
+
+func TestStateStore_ACLRole_UpsertBatchRead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Normal", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		roles := structs.ACLRoles{
+			&structs.ACLRole{
+				ID:          testRoleID_A,
+				Name:        "role1",
+				Description: "test-role1",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_A,
+					},
+				},
+			},
+			&structs.ACLRole{
+				ID:          testRoleID_B,
+				Name:        "role2",
+				Description: "test-role2",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_B,
+					},
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleBatchSet(2, roles))
+
+		idx, rroles, err := s.ACLRoleBatchGet(nil, []string{testRoleID_A, testRoleID_B})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+		require.Len(t, rroles, 2)
+		rroles.Sort()
+		require.ElementsMatch(t, roles, rroles)
+		require.Equal(t, uint64(2), rroles[0].CreateIndex)
+		require.Equal(t, uint64(2), rroles[0].ModifyIndex)
+		require.Equal(t, uint64(2), rroles[1].CreateIndex)
+		require.Equal(t, uint64(2), rroles[1].ModifyIndex)
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		// Seed initial data.
+		roles := structs.ACLRoles{
+			&structs.ACLRole{
+				ID:          testRoleID_A,
+				Name:        "role1",
+				Description: "test-role1",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_A,
+					},
+				},
+			},
+			&structs.ACLRole{
+				ID:          testRoleID_B,
+				Name:        "role2",
+				Description: "test-role2",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_B,
+					},
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleBatchSet(2, roles))
+
+		// Update two roles at the same time.
+		updates := structs.ACLRoles{
+			&structs.ACLRole{
+				ID:          testRoleID_A,
+				Name:        "role1-modified",
+				Description: "test-role1-modified",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_C,
+					},
+				},
+			},
+			&structs.ACLRole{
+				ID:   testRoleID_B,
+				Name: "role2-modified",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_D,
+					},
+					structs.ACLRolePolicyLink{
+						ID: fakePolicyID_E,
+					},
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleBatchSet(3, updates))
+
+		idx, rroles, err := s.ACLRoleBatchGet(nil, []string{testRoleID_A, testRoleID_B})
+
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), idx)
+		require.Len(t, rroles, 2)
+		rroles.Sort()
+		require.Equal(t, testRoleID_A, rroles[0].ID)
+		require.Equal(t, "role1-modified", rroles[0].Name)
+		require.Equal(t, "test-role1-modified", rroles[0].Description)
+		require.ElementsMatch(t, updates[0].Policies, rroles[0].Policies)
+		require.Equal(t, uint64(2), rroles[0].CreateIndex)
+		require.Equal(t, uint64(3), rroles[0].ModifyIndex)
+
+		require.Equal(t, testRoleID_B, rroles[1].ID)
+		require.Equal(t, "role2-modified", rroles[1].Name)
+		require.Equal(t, "", rroles[1].Description)
+		require.ElementsMatch(t, updates[1].Policies, rroles[1].Policies)
+		require.Equal(t, uint64(2), rroles[1].CreateIndex)
+		require.Equal(t, uint64(3), rroles[1].ModifyIndex)
+	})
+}
+
+func TestStateStore_ACLRole_List(t *testing.T) {
+	t.Parallel()
+	s := testACLStateStore(t)
+
+	roles := structs.ACLRoles{
+		&structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "role1",
+			Description: "test-role1",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: fakePolicyID_A,
+				},
+			},
+		},
+		&structs.ACLRole{
+			ID:          testRoleID_B,
+			Name:        "role2",
+			Description: "test-role2",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: fakePolicyID_B,
+				},
+			},
+		},
+	}
+
+	require.NoError(t, s.ACLRoleBatchSet(2, roles))
+
+	_, rroles, err := s.ACLRoleList(nil)
+	require.NoError(t, err)
+	require.Len(t, rroles, 2)
+	rroles.Sort()
+
+	require.Equal(t, testRoleID_A, rroles[0].ID)
+	require.Equal(t, "role1", rroles[0].Name)
+	require.Equal(t, "test-role1", rroles[0].Description)
+	require.ElementsMatch(t, roles[0].Policies, rroles[0].Policies)
+	require.Nil(t, rroles[0].Hash)
+	require.Equal(t, uint64(2), rroles[0].CreateIndex)
+	require.Equal(t, uint64(2), rroles[0].ModifyIndex)
+
+	require.Equal(t, testRoleID_B, rroles[1].ID)
+	require.Equal(t, "role2", rroles[1].Name)
+	require.Equal(t, "test-role2", rroles[1].Description)
+	require.ElementsMatch(t, roles[1].Policies, rroles[1].Policies)
+	require.Nil(t, rroles[1].Hash)
+	require.Equal(t, uint64(2), rroles[1].CreateIndex)
+	require.Equal(t, uint64(2), rroles[1].ModifyIndex)
+}
+
+func TestStateStore_ACLRole_Delete(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ID", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		role := &structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "role1",
+			Description: "test-role1",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: structs.ACLPolicyGlobalManagementID,
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleSet(2, role))
+
+		_, rrole, err := s.ACLRoleGetByID(nil, testRoleID_A)
+		require.NoError(t, err)
+		require.NotNil(t, rrole)
+
+		require.NoError(t, s.ACLRoleDeleteByID(3, testRoleID_A))
+		require.NoError(t, err)
+
+		_, rrole, err = s.ACLRoleGetByID(nil, testRoleID_A)
+		require.NoError(t, err)
+		require.Nil(t, rrole)
+	})
+
+	t.Run("Name", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		role := &structs.ACLRole{
+			ID:          testRoleID_A,
+			Name:        "role1",
+			Description: "test-role1",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID: structs.ACLPolicyGlobalManagementID,
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleSet(2, role))
+
+		_, rrole, err := s.ACLRoleGetByName(nil, "role1")
+		require.NoError(t, err)
+		require.NotNil(t, rrole)
+
+		require.NoError(t, s.ACLRoleDeleteByName(3, "role1"))
+		require.NoError(t, err)
+
+		_, rrole, err = s.ACLRoleGetByName(nil, "role1")
+		require.NoError(t, err)
+		require.Nil(t, rrole)
+	})
+
+	t.Run("Multiple", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		roles := structs.ACLRoles{
+			&structs.ACLRole{
+				ID:          testRoleID_A,
+				Name:        "role1",
+				Description: "test-role1",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: structs.ACLPolicyGlobalManagementID,
+					},
+				},
+			},
+			&structs.ACLRole{
+				ID:          testRoleID_B,
+				Name:        "role2",
+				Description: "test-role2",
+				Policies: []structs.ACLRolePolicyLink{
+					structs.ACLRolePolicyLink{
+						ID: structs.ACLPolicyGlobalManagementID,
+					},
+				},
+			},
+		}
+
+		require.NoError(t, s.ACLRoleBatchSet(2, roles))
+
+		_, rrole, err := s.ACLRoleGetByID(nil, testRoleID_A)
+		require.NoError(t, err)
+		require.NotNil(t, rrole)
+		_, rrole, err = s.ACLRoleGetByID(nil, testRoleID_B)
+		require.NoError(t, err)
+		require.NotNil(t, rrole)
+
+		require.NoError(t, s.ACLRoleBatchDelete(3, []string{testRoleID_A, testRoleID_B}))
+
+		_, rrole, err = s.ACLRoleGetByID(nil, testRoleID_A)
+		require.NoError(t, err)
+		require.Nil(t, rrole)
+		_, rrole, err = s.ACLRoleGetByID(nil, testRoleID_B)
+		require.NoError(t, err)
+		require.Nil(t, rrole)
+	})
+
+	t.Run("Not Found", func(t *testing.T) {
+		t.Parallel()
+		s := testACLStateStore(t)
+
+		// deletion of non-existant roles is not an error
+		require.NoError(t, s.ACLRoleDeleteByName(3, "not-found"))
+		require.NoError(t, s.ACLRoleDeleteByID(3, testRoleID_A))
+	})
+}
+
 func TestStateStore_ACLTokens_Snapshot_Restore(t *testing.T) {
 	s := testStateStore(t)
 
@@ -1688,6 +2283,10 @@ func stripIrrelevantTokenFields(token *structs.ACLToken) *structs.ACLToken {
 	for i, _ := range tokenCopy.Policies {
 		tokenCopy.Policies[i].Name = ""
 	}
+	// Also do the same for Role links.
+	for i, _ := range tokenCopy.Roles {
+		tokenCopy.Roles[i].Name = ""
+	}
 	// The raft indexes won't match either because the requester will not
 	// have access to that.
 	tokenCopy.RaftIndex = structs.RaftIndex{}
@@ -1696,4 +2295,83 @@ func stripIrrelevantTokenFields(token *structs.ACLToken) *structs.ACLToken {
 
 func compareTokens(t *testing.T, expected, actual *structs.ACLToken) {
 	require.Equal(t, stripIrrelevantTokenFields(expected), stripIrrelevantTokenFields(actual))
+}
+
+func TestStateStore_ACLRoles_Snapshot_Restore(t *testing.T) {
+	s := testStateStore(t)
+
+	roles := structs.ACLRoles{
+		&structs.ACLRole{
+			ID:          "68016c3d-835b-450c-a6f9-75db9ba740be",
+			Name:        "838f72b5-5c15-4a9e-aa6d-31734c3a0286",
+			Description: "policy1",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID:   "ca1fc52c-3676-4050-82ed-ca223e38b2c9",
+					Name: "policy1",
+				},
+				structs.ACLRolePolicyLink{
+					ID:   "7b70fa0f-58cd-412d-93c3-a0f17bb19a3e",
+					Name: "policy2",
+				},
+			},
+			Hash:      []byte{1, 2, 3, 4},
+			RaftIndex: structs.RaftIndex{CreateIndex: 1, ModifyIndex: 2},
+		},
+		&structs.ACLRole{
+			ID:          "b2125a1b-2a52-41d4-88f3-c58761998a46",
+			Name:        "ba5d9239-a4ab-49b9-ae09-1f19eed92204",
+			Description: "policy2",
+			Policies: []structs.ACLRolePolicyLink{
+				structs.ACLRolePolicyLink{
+					ID:   "ca1fc52c-3676-4050-82ed-ca223e38b2c9",
+					Name: "policy1",
+				},
+				structs.ACLRolePolicyLink{
+					ID:   "7b70fa0f-58cd-412d-93c3-a0f17bb19a3e",
+					Name: "policy2",
+				},
+			},
+			Hash:      []byte{1, 2, 3, 4},
+			RaftIndex: structs.RaftIndex{CreateIndex: 1, ModifyIndex: 2},
+		},
+	}
+
+	require.NoError(t, s.ACLRoleBatchSet(2, roles))
+
+	// Snapshot the ACLs.
+	snap := s.Snapshot()
+	defer snap.Close()
+
+	// Alter the real state store.
+	require.NoError(t, s.ACLRoleDeleteByID(3, roles[0].ID))
+
+	// Verify the snapshot.
+	require.Equal(t, uint64(2), snap.LastIndex())
+
+	iter, err := snap.ACLRoles()
+	require.NoError(t, err)
+
+	var dump structs.ACLRoles
+	for role := iter.Next(); role != nil; role = iter.Next() {
+		dump = append(dump, role.(*structs.ACLRole))
+	}
+	require.ElementsMatch(t, dump, roles)
+
+	// Restore the values into a new state store.
+	func() {
+		s := testStateStore(t)
+		restore := s.Restore()
+		for _, role := range dump {
+			require.NoError(t, restore.ACLRole(role))
+		}
+		restore.Commit()
+
+		// Read the restored ACLs back out and verify that they match.
+		idx, res, err := s.ACLRoleList(nil)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), idx)
+		require.ElementsMatch(t, roles, res)
+		require.Equal(t, uint64(2), s.maxIndex("acl-roles"))
+	}()
 }
