@@ -646,7 +646,7 @@ func TestACLEndpoint_TokenRead(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	t.Run("exists and matches what we created", func(t *testing.T) {
 		req := structs.ACLTokenGetRequest{
@@ -767,7 +767,7 @@ func TestACLEndpoint_TokenClone(t *testing.T) {
 	t1, err := upsertTestToken(codec, "root", "dc1", nil)
 	require.NoError(t, err)
 
-	endpoint := ACL{s1}
+	endpoint := ACL{srv: s1}
 
 	t.Run("normal", func(t *testing.T) {
 		req := structs.ACLTokenSetRequest{
@@ -833,7 +833,7 @@ func TestACLEndpoint_TokenSet(t *testing.T) {
 	clock := newStoppedClock(time.Now())
 	s1.clock = clock
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	var tokenID string
 
@@ -1182,7 +1182,7 @@ func TestACLEndpoint_TokenSet_anon(t *testing.T) {
 	policy, err := upsertTestPolicy(codec, "root", "dc1")
 	require.NoError(t, err)
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	// Assign the policies to a token
 	tokenUpsertReq := structs.ACLTokenSetRequest{
@@ -1246,8 +1246,8 @@ func TestACLEndpoint_TokenDelete(t *testing.T) {
 	s1.clock = clock
 	s2.clock = clock
 
-	acl := ACL{s1}
-	acl2 := ACL{s2}
+	acl := ACL{srv: s1}
+	acl2 := ACL{srv: s2}
 
 	existingToken, err := upsertTestToken(codec, "root", "dc1", nil)
 	require.NoError(t, err)
@@ -1433,7 +1433,7 @@ func TestACLEndpoint_TokenDelete_anon(t *testing.T) {
 
 	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	req := structs.ACLTokenDeleteRequest{
 		Datacenter:   "dc1",
@@ -1471,7 +1471,7 @@ func TestACLEndpoint_TokenList(t *testing.T) {
 
 	expTime := clock.Now().Add(2 * time.Minute)
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	t1, err := upsertTestToken(codec, "root", "dc1", nil)
 	require.NoError(t, err)
@@ -1561,7 +1561,7 @@ func TestACLEndpoint_TokenBatchRead(t *testing.T) {
 
 	expTime := clock.Now().Add(2 * time.Minute)
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	t1, err := upsertTestToken(codec, "root", "dc1", nil)
 	require.NoError(t, err)
@@ -1640,7 +1640,7 @@ func TestACLEndpoint_PolicyRead(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	req := structs.ACLPolicyGetRequest{
 		Datacenter:   "dc1",
@@ -1718,7 +1718,7 @@ func TestACLEndpoint_PolicySet(t *testing.T) {
 
 	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 	var policyID string
 
 	// Create it
@@ -1796,7 +1796,7 @@ func TestACLEndpoint_PolicySet_globalManagement(t *testing.T) {
 
 	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	// Can't change the rules
 	{
@@ -1863,7 +1863,7 @@ func TestACLEndpoint_PolicyDelete(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	req := structs.ACLPolicyDeleteRequest{
 		Datacenter:   "dc1",
@@ -1896,7 +1896,7 @@ func TestACLEndpoint_PolicyDelete_globalManagement(t *testing.T) {
 
 	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	req := structs.ACLPolicyDeleteRequest{
 		Datacenter:   "dc1",
@@ -1931,7 +1931,7 @@ func TestACLEndpoint_PolicyList(t *testing.T) {
 	p2, err := upsertTestPolicy(codec, "root", "dc1")
 	require.NoError(t, err)
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	req := structs.ACLPolicyListRequest{
 		Datacenter:   "dc1",
@@ -1977,7 +1977,7 @@ func TestACLEndpoint_PolicyResolve(t *testing.T) {
 	p2, err := upsertTestPolicy(codec, "root", "dc1")
 	require.NoError(t, err)
 
-	acl := ACL{s1}
+	acl := ACL{srv: s1}
 
 	policies := []string{p1.ID, p2.ID}
 
