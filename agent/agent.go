@@ -2110,8 +2110,7 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				chkType.Interval = checks.MinInterval
 			}
 
-			a.tlsConfigurator.AddCheck(string(check.CheckID), chkType.TLSSkipVerify)
-			tlsClientConfig, err := a.tlsConfigurator.OutgoingTLSConfigForCheck(string(check.CheckID))
+			tlsClientConfig, err := a.tlsConfigurator.OutgoingTLSConfigForCheck(chkType.TLSSkipVerify)
 			if err != nil {
 				return fmt.Errorf("Failed to set up TLS: %v", err)
 			}
@@ -2166,8 +2165,7 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 			var tlsClientConfig *tls.Config
 			if chkType.GRPCUseTLS {
 				var err error
-				a.tlsConfigurator.AddCheck(string(check.CheckID), chkType.TLSSkipVerify)
-				tlsClientConfig, err = a.tlsConfigurator.OutgoingTLSConfigForCheck(string(check.CheckID))
+				tlsClientConfig, err = a.tlsConfigurator.OutgoingTLSConfigForCheck(chkType.TLSSkipVerify)
 				if err != nil {
 					return fmt.Errorf("Failed to set up TLS: %v", err)
 				}
@@ -2315,7 +2313,6 @@ func (a *Agent) RemoveCheck(checkID types.CheckID, persist bool) error {
 
 	// Add to the local state for anti-entropy
 	a.State.RemoveCheck(checkID)
-	a.tlsConfigurator.RemoveCheck(string(checkID))
 
 	a.checkLock.Lock()
 	defer a.checkLock.Unlock()
