@@ -3396,11 +3396,13 @@ func TestHansAgent_ReloadConfigOutgoingRPCConfig(t *testing.T) {
 	tlsConf, err := a.tlsConfigurator.OutgoingRPCConfig()
 	require.NoError(t, err)
 	require.True(t, tlsConf.InsecureSkipVerify)
+	require.Len(t, tlsConf.ClientCAs.Subjects(), 1)
+	require.Len(t, tlsConf.RootCAs.Subjects(), 1)
 
 	hcl = `
 		data_dir = "` + dataDir + `"
 		verify_outgoing = true
-		ca_file = "../test/ca/root.cer"
+		ca_path = "../test/ca_path"
 		cert_file = "../test/key/ourdomain.cer"
 		key_file = "../test/key/ourdomain.key"
 		verify_server_hostname = true
@@ -3410,7 +3412,9 @@ func TestHansAgent_ReloadConfigOutgoingRPCConfig(t *testing.T) {
 	require.NoError(t, err)
 	tlsConf, err = a.tlsConfigurator.OutgoingRPCConfig()
 	require.NoError(t, err)
-	require.True(t, tlsConf.InsecureSkipVerify)
+	require.False(t, tlsConf.InsecureSkipVerify)
+	require.Len(t, tlsConf.RootCAs.Subjects(), 2)
+	require.Len(t, tlsConf.ClientCAs.Subjects(), 2)
 }
 
 func TestHansAgent_ReloadConfigIncomingRPCConfig(t *testing.T) {
@@ -3434,11 +3438,13 @@ func TestHansAgent_ReloadConfigIncomingRPCConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tlsConf)
 	require.True(t, tlsConf.InsecureSkipVerify)
+	require.Len(t, tlsConf.ClientCAs.Subjects(), 1)
+	require.Len(t, tlsConf.RootCAs.Subjects(), 1)
 
 	hcl = `
 		data_dir = "` + dataDir + `"
 		verify_outgoing = true
-		ca_file = "../test/ca/root.cer"
+		ca_path = "../test/ca_path"
 		cert_file = "../test/key/ourdomain.cer"
 		key_file = "../test/key/ourdomain.key"
 		verify_server_hostname = true
@@ -3447,5 +3453,7 @@ func TestHansAgent_ReloadConfigIncomingRPCConfig(t *testing.T) {
 	err = a.ReloadConfig(c)
 	require.NoError(t, err)
 	tlsConf, err = tlsConf.GetConfigForClient(nil)
-	require.True(t, tlsConf.InsecureSkipVerify)
+	require.False(t, tlsConf.InsecureSkipVerify)
+	require.Len(t, tlsConf.ClientCAs.Subjects(), 2)
+	require.Len(t, tlsConf.RootCAs.Subjects(), 2)
 }

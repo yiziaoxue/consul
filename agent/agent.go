@@ -3356,6 +3356,8 @@ func (a *Agent) ReloadConfig(newCfg *config.RuntimeConfig) error {
 	}
 	a.unloadMetadata()
 
+	a.tlsConfigurator.Update(newCfg.ToTLSUtilConfig())
+
 	// Reload service/check definitions and metadata.
 	if err := a.loadServices(newCfg); err != nil {
 		return fmt.Errorf("Failed reloading services: %s", err)
