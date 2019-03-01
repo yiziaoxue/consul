@@ -24,6 +24,15 @@ func TestACLTokenReap_Primary(t *testing.T) {
 }
 
 func testACLTokenReap_Primary(t *testing.T, local, global bool) {
+	// -------------------------------------------
+	// A word of caution when testing reapExpiredACLTokens():
+	//
+	// The underlying memdb index used for reaping has a minimum granularity of
+	// 1 second as it delegates to `time.Unix()`. This test will have to be
+	// deliberately slow to allow for necessary sleeps.  If you try to make it
+	// operate faster (using expiration ttls of milliseconds) it will be flaky.
+	// -------------------------------------------
+
 	t.Helper()
 	require.NotEqual(t, local, global)
 
@@ -31,6 +40,8 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 		c.ACLDatacenter = "dc1"
 		c.ACLsEnabled = true
 		c.ACLMasterToken = "root"
+		c.ACLTokenMinExpirationTTL = 10 * time.Millisecond
+		c.ACLTokenMaxExpirationTTL = 8 * time.Second
 	})
 	defer os.RemoveAll(dir1)
 	defer s1.Shutdown()
@@ -39,9 +50,6 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 
 	codec := rpcClient(t, s1)
 	defer codec.Close()
-
-	clock := newStoppedClock(time.Now())
-	s1.clock = clock
 
 	acl := ACL{s1}
 
@@ -103,8 +111,6 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 		requireTokenMatch(t, []string{})
 	})
 
-	clock.Reset()
-
 	// 2 normal
 	token1, err := upsertTestToken(codec, "root", "dc1", func(token *structs.ACLToken) {
 		token.Local = local
@@ -131,16 +137,14 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 		})
 	})
 
-	clock.Reset()
-
 	// 2 expiring
 	token3, err := upsertTestToken(codec, "root", "dc1", func(token *structs.ACLToken) {
-		token.ExpirationTime = clock.Now().Add(1 * time.Minute)
+		token.ExpirationTTL = 1 * time.Second
 		token.Local = local
 	})
 	require.NoError(t, err)
 	token4, err := upsertTestToken(codec, "root", "dc1", func(token *structs.ACLToken) {
-		token.ExpirationTime = clock.Now().Add(2 * time.Minute)
+		token.ExpirationTTL = 5 * time.Second
 		token.Local = local
 	})
 	require.NoError(t, err)
@@ -179,15 +183,12 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 		})
 	})
 
-	t.Run("one should be reaped", func(t *testing.T) {
-		prevTime := clock.Add(1*time.Minute + 1*time.Second)
+	time.Sleep(token3.ExpirationTime.Sub(time.Now()) + 10*time.Millisecond)
 
+	t.Run("one should be reaped", func(t *testing.T) {
 		n, err := s1.reapExpiredACLTokens(local, global)
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
-
-		// rewind time to actually list the expired tokens
-		clock.Set(prevTime)
 
 		requireTokenMatch(t, []string{
 			token1.AccessorID,
@@ -199,15 +200,12 @@ func testACLTokenReap_Primary(t *testing.T, local, global bool) {
 		})
 	})
 
-	t.Run("one should be reaped", func(t *testing.T) {
-		prevTime := clock.Add(25 * time.Hour)
+	time.Sleep(token4.ExpirationTime.Sub(time.Now()) + 10*time.Millisecond)
 
+	t.Run("two should be reaped", func(t *testing.T) {
 		n, err := s1.reapExpiredACLTokens(local, global)
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
-
-		// rewind time to actually list the expired tokens
-		clock.Set(prevTime)
 
 		requireTokenMatch(t, []string{
 			token1.AccessorID,

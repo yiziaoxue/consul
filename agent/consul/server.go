@@ -242,14 +242,6 @@ type Server struct {
 	// for the KV tombstones
 	tombstoneGC *state.TombstoneGC
 
-	// clock is a way to control access to the current time. This is mainly
-	// here for use select tests. Not all time accesses go through this yet, so
-	// use it from tests with care.
-	//
-	// This clock should only really be used for correctness-related operations
-	// and not for diagnostic metrics timing.
-	clock clock
-
 	// aclReplicationStatus (and its associated lock) provide information
 	// about the health of the ACL replication goroutine.
 	aclReplicationStatus     structs.ACLReplicationStatus
@@ -668,14 +660,6 @@ func (s *Server) setupRaft() error {
 		return err
 	}
 	return nil
-}
-
-// currentTime is a proxy for time.Now() that allows for tests to control the clock.
-func (s *Server) currentTime() time.Time {
-	if s.clock != nil {
-		return s.clock.Now()
-	}
-	return time.Now()
 }
 
 // endpointFactory is a function that returns an RPC endpoint bound to the given

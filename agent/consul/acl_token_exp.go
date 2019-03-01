@@ -3,6 +3,7 @@ package consul
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/consul/agent/structs"
 	"golang.org/x/time/rate"
@@ -75,12 +76,12 @@ func (s *Server) reapExpiredACLTokens(local, global bool) (int, error) {
 
 	locality := localityName(local)
 
-	now := s.currentTime()
-
 	minExpiredTime, err := s.fsm.State().ACLTokenMinExpirationTime(local)
 	if err != nil {
 		return 0, err
 	}
+
+	now := time.Now()
 
 	if minExpiredTime.After(now) {
 		return 0, nil // nothing to do

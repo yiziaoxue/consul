@@ -26,16 +26,6 @@ const (
 // Regex for matching
 var validPolicyName = regexp.MustCompile(`^[A-Za-z0-9\-_]{1,128}$`)
 
-const (
-	// maxTokenExpirationDuration is the maximum difference allowed between
-	// ACLToken CreateTime and ExpirationTime values if ExpirationTime is set.
-	maxTokenExpirationDuration = 24 * time.Hour
-
-	// minTokenExpirationDuration is the minimum difference allowed between
-	// ACLToken CreateTime and ExpirationTime values if ExpirationTime is set.
-	minTokenExpirationDuration = 1 * time.Minute
-)
-
 // ACL endpoint is used to manipulate ACLs
 type ACL struct {
 	srv *Server
@@ -158,7 +148,7 @@ func (a *ACL) BootstrapTokens(args *structs.DCSpecificRequest, reply *structs.AC
 					ID: structs.ACLPolicyGlobalManagementID,
 				},
 			},
-			CreateTime: a.srv.currentTime(),
+			CreateTime: time.Now(),
 			Local:      false,
 			// DEPRECATED (ACL-Legacy-Compat) - This is used so that the bootstrap token is still visible via the v1 acl APIs
 			Type: structs.ACLTokenTypeManagement,
@@ -228,7 +218,7 @@ func (a *ACL) TokenRead(args *structs.ACLTokenGetRequest, reply *structs.ACLToke
 				index, token, err = state.ACLTokenGetBySecret(ws, args.TokenID)
 			}
 
-			if token != nil && token.IsExpired(a.srv.currentTime()) {
+			if token != nil && token.IsExpired(time.Now()) {
 				token = nil
 			}
 
@@ -267,7 +257,7 @@ func (a *ACL) TokenClone(args *structs.ACLTokenSetRequest, reply *structs.ACLTok
 	_, token, err := a.srv.fsm.State().ACLTokenGetByAccessor(nil, args.ACLToken.AccessorID)
 	if err != nil {
 		return err
-	} else if token == nil || token.IsExpired(a.srv.currentTime()) {
+	} else if token == nil || token.IsExpired(time.Now()) {
 		return acl.ErrNotFound
 	} else if !a.srv.InACLDatacenter() && !token.Local {
 		// global token writes must be forwarded to the primary DC
@@ -353,7 +343,7 @@ func (a *ACL) tokenSetInternal(args *structs.ACLTokenSetRequest, reply *structs.
 			return err
 		}
 
-		token.CreateTime = a.srv.currentTime()
+		token.CreateTime = time.Now()
 
 		// Ensure an ExpirationTTL is valid if provided.
 		if token.ExpirationTTL != 0 {
@@ -374,12 +364,12 @@ func (a *ACL) tokenSetInternal(args *structs.ACLTokenSetRequest, reply *structs.
 			}
 
 			expiresIn := token.ExpirationTime.Sub(token.CreateTime)
-			if expiresIn > maxTokenExpirationDuration {
+			if expiresIn > a.srv.config.ACLTokenMaxExpirationTTL {
 				return fmt.Errorf("ExpirationTime cannot be more than %s in the future (was %s)",
-					maxTokenExpirationDuration, expiresIn)
-			} else if expiresIn < minTokenExpirationDuration {
+					a.srv.config.ACLTokenMaxExpirationTTL, expiresIn)
+			} else if expiresIn < a.srv.config.ACLTokenMinExpirationTTL {
 				return fmt.Errorf("ExpirationTime cannot be less than %s in the future (was %s)",
-					minTokenExpirationDuration, expiresIn)
+					a.srv.config.ACLTokenMinExpirationTTL, expiresIn)
 			}
 		}
 	} else {
@@ -405,7 +395,7 @@ func (a *ACL) tokenSetInternal(args *structs.ACLTokenSetRequest, reply *structs.
 		if err != nil {
 			return fmt.Errorf("Failed to lookup the acl token %q: %v", token.AccessorID, err)
 		}
-		if existing == nil || existing.IsExpired(a.srv.currentTime()) {
+		if existing == nil || existing.IsExpired(time.Now()) {
 			return fmt.Errorf("Cannot find token %q", token.AccessorID)
 		}
 		if token.SecretID == "" {
@@ -424,7 +414,7 @@ func (a *ACL) tokenSetInternal(args *structs.ACLTokenSetRequest, reply *structs.
 		}
 
 		if upgrade {
-			token.CreateTime = a.srv.currentTime()
+			token.CreateTime = time.Now()
 		} else {
 			token.CreateTime = existing.CreateTime
 		}
@@ -600,7 +590,7 @@ func (a *ACL) TokenList(args *structs.ACLTokenListRequest, reply *structs.ACLTok
 				return err
 			}
 
-			now := a.srv.currentTime()
+			now := time.Now()
 
 			stubs := make([]*structs.ACLTokenListStub, 0, len(tokens))
 			for _, token := range tokens {
