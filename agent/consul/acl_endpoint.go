@@ -28,11 +28,11 @@ var validPolicyName = regexp.MustCompile(`^[A-Za-z0-9\-_]{1,128}$`)
 
 const (
 	// maxTokenExpirationDuration is the maximum difference allowed between
-	// ACLToken CreateTime and ExpirationTime values.
+	// ACLToken CreateTime and ExpirationTime values if ExpirationTime is set.
 	maxTokenExpirationDuration = 24 * time.Hour
 
 	// minTokenExpirationDuration is the minimum difference allowed between
-	// ACLToken CreateTime and ExpirationTime values.
+	// ACLToken CreateTime and ExpirationTime values if ExpirationTime is set.
 	minTokenExpirationDuration = 1 * time.Minute
 )
 
